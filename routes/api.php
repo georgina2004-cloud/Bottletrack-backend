@@ -13,6 +13,8 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\PresentacionProductoController;
+use App\Http\Controllers\MiPerfilController;
+use App\Http\Controllers\BackupController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -25,13 +27,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/configuracion', [SetupController::class, 'obtener']);
     Route::post('/configuracion', [SetupController::class, 'actualizar']);
+    Route::get('/mis-permisos', [MiPerfilController::class, 'permisos']);
 
     Route::get('/productos/buscar-por-codigo/{codigo}', [ProductoController::class, 'buscarPorCodigo']);
     Route::apiResource('productos', ProductoController::class);
     Route::apiResource('categorias', CategoriaController::class);
     Route::apiResource('proveedores', ProveedorController::class);
     Route::get('/dashboard/resumen-inventario', [DashboardController::class, 'resumenInventario']);
-
 
     Route::get('/ventas', [VentaController::class, 'index']);
     Route::post('/ventas', [VentaController::class, 'store']);
@@ -46,7 +48,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/resumen-ventas-compras', [DashboardController::class, 'resumenVentasCompras']);
 
     Route::apiResource('usuarios', UsuarioController::class);
-    Route::get('/roles', [RoleController::class, 'index']); 
+    
+    // Roles y permisos
+    Route::get('/roles', [RoleController::class, 'index']);
+    Route::get('/permisos', [RoleController::class, 'permisos']);
+    Route::get('/roles/permisos', [RoleController::class, 'rolesConPermisos']);
+    Route::put('/roles/{role}/permisos', [RoleController::class, 'actualizarPermisos']);
 
     Route::get('/reportes/maestro-detalle-ventas', [ReportController::class, 'maestroDetalleVentas']);
     Route::get('/reportes/inventario-actual', [ReportController::class, 'inventarioActual']);
@@ -56,6 +63,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/reportes/compras-por-proveedor', [ReportController::class, 'comprasPorProveedor']);
     Route::get('/reportes/movimientos-inventario', [ReportController::class, 'movimientosInventario']);
     Route::get('/ventas/{venta}/factura-pdf', [ReportController::class, 'facturaPdf']);
+
+    Route::get('/backup/generar', [BackupController::class, 'generar']);
+    Route::post('/backup/restaurar', [BackupController::class, 'restaurar']);
 
     Route::post('/productos/bulk', [ProductoController::class, 'storeBulk']);
     Route::get('/productos/{producto}/presentaciones', [PresentacionProductoController::class, 'index']);

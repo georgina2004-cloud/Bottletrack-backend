@@ -58,21 +58,27 @@ class UsuarioController extends Controller
     }
 
     public function destroy(Request $request, User $usuario)
-{
-    if ($request->user()->id === $usuario->id) {
-        return response()->json([
-            'message' => 'No puedes eliminar tu propia cuenta.',
-        ], 409);
-    }
+    {
+        if (!$request->user()->tienePermiso('usuarios.eliminar')) {
+            return response()->json([
+                'message' => 'No tienes permiso para realizar esta acción.',
+            ], 403);
+        }
 
-    try {
-        $usuario->delete();
-    } catch (\Illuminate\Database\QueryException $e) {
-        return response()->json([
-            'message' => 'No se puede eliminar: este usuario tiene ventas o compras registradas. Puedes desactivarlo en su lugar desde la pantalla de edición.',
-        ], 409);
-    }
+        if ($request->user()->id === $usuario->id) {
+            return response()->json([
+                'message' => 'No puedes eliminar tu propia cuenta.',
+            ], 409);
+        }
 
-    return response()->json(['message' => 'Usuario eliminado permanentemente.']);
-}
+        try {
+            $usuario->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            return response()->json([
+                'message' => 'No se puede eliminar: este usuario tiene ventas o compras registradas. Puedes desactivarlo en su lugar desde la pantalla de edición.',
+            ], 409);
+        }
+
+        return response()->json(['message' => 'Usuario eliminado permanentemente.']);
+    }
 }

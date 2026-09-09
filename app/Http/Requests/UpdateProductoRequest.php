@@ -8,7 +8,7 @@ class UpdateProductoRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role->nombre === 'Gerente de Bodega';
+        return $this->user()->tienePermiso('productos.editar');
     }
 
     public function rules(): array

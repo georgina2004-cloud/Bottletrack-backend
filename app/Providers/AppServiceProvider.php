@@ -25,5 +25,9 @@ class AppServiceProvider extends ServiceProvider
     {
         DetalleVenta::observe(DetalleVentaObserver::class);
         DetalleCompra::observe(DetalleCompraObserver::class);
+
+        if ($this->app->environment('production')) {
+        \Illuminate\Support\Facades\URL::forceScheme('https');
+    }
     }
 }

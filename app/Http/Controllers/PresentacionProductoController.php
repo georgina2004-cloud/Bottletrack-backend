@@ -15,6 +15,10 @@ class PresentacionProductoController extends Controller
 
     public function store(Request $request, Producto $producto)
     {
+        if (!$request->user()->tienePermiso('productos.editar') && !$request->user()->tienePermiso('productos.crear')) {
+            return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+        }
+
         $validado = $request->validate([
             'nombre' => 'required|string|max:50',
             'unidades_equivalentes' => 'required|integer|min:1',
@@ -36,6 +40,10 @@ class PresentacionProductoController extends Controller
 
     public function update(Request $request, PresentacionProducto $presentacion)
     {
+        if (!$request->user()->tienePermiso('productos.editar')) {
+            return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+        }
+
         $validado = $request->validate([
             'nombre' => 'required|string|max:50',
             'unidades_equivalentes' => 'required|integer|min:1',
@@ -52,8 +60,12 @@ class PresentacionProductoController extends Controller
         return response()->json(['message' => 'Presentación actualizada.', 'presentacion' => $presentacion]);
     }
 
-    public function destroy(PresentacionProducto $presentacion)
+    public function destroy(Request $request, PresentacionProducto $presentacion)
     {
+        if (!$request->user()->tienePermiso('productos.eliminar') && !$request->user()->tienePermiso('productos.editar')) {
+            return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+        }
+
         if ($presentacion->producto->presentaciones()->count() <= 1) {
             return response()->json([
                 'message' => 'Un producto debe tener al menos una presentación.',

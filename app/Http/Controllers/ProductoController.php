@@ -55,7 +55,7 @@ class ProductoController extends Controller
 
     public function storeBulk(Request $request)
     {
-        if ($request->user()->role->nombre !== 'Gerente de Bodega') {
+        if (!$request->user()->tienePermiso('productos.crear')) {
             return response()->json([
                 'message' => 'No tienes permiso para realizar esta acción.',
             ], 403);
@@ -132,7 +132,7 @@ class ProductoController extends Controller
 
     public function destroy(Request $request, Producto $producto)
     {
-        if ($request->user()->role->nombre !== 'Gerente de Bodega') {
+        if (!$request->user()->tienePermiso('productos.eliminar')) {
             return response()->json([
                 'message' => 'No tienes permiso para realizar esta acción.',
             ], 403);

@@ -8,7 +8,7 @@ class StoreProductoRequest extends FormRequest
 {
     public function authorize(): bool
     {
-    return $this->user()->role->nombre === 'Gerente de Bodega';
+    return $this->user()->tienePermiso('productos.crear');
     }
 
     public function rules(): array

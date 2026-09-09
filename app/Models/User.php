@@ -49,4 +49,10 @@ class User extends Authenticatable
     {
         return $this->hasMany(Compra::class);
     }
+
+
+    public function tienePermiso(string $clave): bool
+    {
+        return $this->role->tienePermiso($clave);
+    }
 }

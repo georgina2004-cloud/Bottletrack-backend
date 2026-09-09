@@ -8,7 +8,7 @@ class StoreCompraRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role->nombre === 'Gerente de Bodega';
+        return $this->user()->tienePermiso('compras.crear');
     }
 
     public function rules(): array

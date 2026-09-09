@@ -9,7 +9,7 @@ class UpdateUsuarioRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role->nombre === 'Gerente de Bodega';
+        return $this->user()->tienePermiso('usuarios.editar');
     }
 
     public function rules(): array

@@ -8,7 +8,7 @@ class StoreUsuarioRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->role->nombre === 'Gerente de Bodega';
+        return $this->user()->tienePermiso('usuarios.crear');
     }
 
     public function rules(): array

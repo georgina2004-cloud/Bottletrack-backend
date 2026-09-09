@@ -26,4 +26,9 @@ class Role extends Model
         return $this->hasMany(User::class);
     }
 
+    public function tienePermiso(string $clave): bool
+    {
+        return $this->permisos()->where('clave', $clave)->exists();
+    }
+
 }

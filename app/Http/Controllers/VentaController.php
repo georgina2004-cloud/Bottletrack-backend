@@ -11,23 +11,24 @@ use Illuminate\Support\Facades\DB;
 class VentaController extends Controller
 {
     public function index(Request $request)
-{
-    $query = Venta::with(['usuario', 'detalles.producto'])->orderByDesc('fecha');
+    {
+        $query = Venta::with(['usuario', 'detalles.producto'])->orderByDesc('fecha');
 
-    if ($request->filled('desde')) {
-        $query->whereDate('fecha', '>=', $request->input('desde'));
+        if ($request->filled('desde')) {
+            $query->whereDate('fecha', '>=', $request->input('desde'));
+        }
+
+        if ($request->filled('hasta')) {
+            $query->whereDate('fecha', '<=', $request->input('hasta'));
+        }
+
+        if (!$request->user()->tienePermiso('ventas.ver_todas')) {
+            $query->where('user_id', $request->user()->id);
+        }
+
+        return response()->json($query->paginate(15));
     }
 
-    if ($request->filled('hasta')) {
-        $query->whereDate('fecha', '<=', $request->input('hasta'));
-    }
-
-    if ($request->user()->role->nombre === 'Encargado de Ventas') {
-        $query->where('user_id', $request->user()->id);
-    }
-
-    return response()->json($query->paginate(15));
-}
     public function store(StoreVentaRequest $request)
     {
         $datosValidados = $request->validated();
@@ -37,25 +38,25 @@ class VentaController extends Controller
             $lineasCalculadas = [];
 
             foreach ($datosValidados['productos'] as $item) {
-            $producto = Producto::findOrFail($item['producto_id']);
-            $presentacion = \App\Models\PresentacionProducto::findOrFail($item['presentacion_id']);
+                $producto = Producto::findOrFail($item['producto_id']);
+                $presentacion = \App\Models\PresentacionProducto::findOrFail($item['presentacion_id']);
 
-            $unidadesReales = $presentacion->unidades_equivalentes * $item['cantidad'];
+                $unidadesReales = $presentacion->unidades_equivalentes * $item['cantidad'];
 
-            if ($producto->stock_actual < $unidadesReales) {
-            throw new \Exception("Stock insuficiente para '{$producto->nombre}'. Disponible: {$producto->stock_actual} unidades.");
-            }
+                if ($producto->stock_actual < $unidadesReales) {
+                    throw new \Exception("Stock insuficiente para '{$producto->nombre}'. Disponible: {$producto->stock_actual} unidades.");
+                }
 
-            $precioUnitario = $presentacion->precio_venta;
-            $subtotalLinea = $precioUnitario * $item['cantidad'];
-            $subtotal += $subtotalLinea;
+                $precioUnitario = $presentacion->precio_venta;
+                $subtotalLinea = $precioUnitario * $item['cantidad'];
+                $subtotal += $subtotalLinea;
 
-            $lineasCalculadas[] = [
-            'producto_id' => $producto->id,
-            'cantidad' => $unidadesReales,
-            'precio_unitario' => $precioUnitario / $presentacion->unidades_equivalentes,
-            'subtotal' => $subtotalLinea,
-            ];
+                $lineasCalculadas[] = [
+                    'producto_id' => $producto->id,
+                    'cantidad' => $unidadesReales,
+                    'precio_unitario' => $precioUnitario / $presentacion->unidades_equivalentes,
+                    'subtotal' => $subtotalLinea,
+                ];
             }
 
             $descuento = $datosValidados['descuento'] ?? 0;
@@ -92,24 +93,24 @@ class VentaController extends Controller
         return response()->json($venta->load(['detalles.producto', 'usuario']));
     }
 
-    public function anular(Venta $venta)
+    public function anular(Request $request, Venta $venta)
     {
-    if (!in_array(request()->user()->role->nombre, ['Gerente de Bodega', 'Encargado de Ventas'])) {
-        return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
-    }
-
-    if (!$venta->estado_activa) {
-        return response()->json(['message' => 'Esta venta ya está anulada.'], 409);
-    }
-
-    DB::transaction(function () use ($venta) {
-        foreach ($venta->detalles as $detalle) {
-            $detalle->delete();
+        if (!$request->user()->tienePermiso('ventas.anular')) {
+            return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
         }
 
-        $venta->update(['estado_activa' => false]);
-    });
+        if (!$venta->estado_activa) {
+            return response()->json(['message' => 'Esta venta ya está anulada.'], 409);
+        }
 
-    return response()->json(['message' => 'Venta anulada correctamente. El stock fue restituido.']);
+        DB::transaction(function () use ($venta) {
+            foreach ($venta->detalles as $detalle) {
+                $detalle->delete();
+            }
+
+            $venta->update(['estado_activa' => false]);
+        });
+
+        return response()->json(['message' => 'Venta anulada correctamente. El stock fue restituido.']);
     }
 }
