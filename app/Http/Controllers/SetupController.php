@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\SetupInicialRequest;
 use App\Models\ConfiguracionEmpresa;
+use App\Models\Permiso;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ConfiguracionSingleton;
@@ -37,6 +38,13 @@ class SetupController extends Controller
             );
             Role::firstOrCreate(['nombre' => 'Encargado de Ventas'], ['descripcion' => 'Registra ventas.']);
             Role::firstOrCreate(['nombre' => 'Auditor'], ['descripcion' => 'Acceso de solo lectura.']);
+
+            // Asignar TODOS los permisos existentes al rol Gerente de Bodega,
+            // para que el administrador inicial tenga control total del sistema
+            // desde el primer momento (sin esto, queda sin permisos y no puede
+            // acceder a ninguna pantalla protegida por ProtectedByRole).
+            $todosLosPermisos = Permiso::pluck('id');
+            $rolAdmin->permisos()->sync($todosLosPermisos);
 
             $logoPath = null;
             if ($request->hasFile('logo')) {
@@ -108,40 +116,40 @@ class SetupController extends Controller
     }
 
     public function actualizar(Request $request)
-{
-    $config = ConfiguracionEmpresa::first();
+    {
+        $config = ConfiguracionEmpresa::first();
 
-    if (!$config) {
-        return response()->json(['message' => 'Configuración no encontrada.'], 404);
-    }
-
-    $validados = $request->validate([
-        'nombre_licoreria' => 'required|string|max:255',
-        'eslogan'          => 'nullable|string|max:255',
-        'telefono'         => 'nullable|string|max:50',
-        'email'            => 'nullable|email|max:255',
-        'direccion'        => 'nullable|string|max:255',
-        'moneda'           => 'required|string|max:10',
-        'color_primario'   => 'required|string|max:20',
-        'logo'             => 'nullable|image|max:2048',
-    ]);
-
-    if ($request->hasFile('logo')) {
-        // Eliminar logo anterior si existe
-        if ($config->logo_path && Storage::disk('public')->exists($config->logo_path)) {
-            Storage::disk('public')->delete($config->logo_path);
+        if (!$config) {
+            return response()->json(['message' => 'Configuración no encontrada.'], 404);
         }
-        $validados['logo_path'] = $request->file('logo')->store('logos', 'public');
+
+        $validados = $request->validate([
+            'nombre_licoreria' => 'required|string|max:255',
+            'eslogan'          => 'nullable|string|max:255',
+            'telefono'         => 'nullable|string|max:50',
+            'email'            => 'nullable|email|max:255',
+            'direccion'        => 'nullable|string|max:255',
+            'moneda'           => 'required|string|max:10',
+            'color_primario'   => 'required|string|max:20',
+            'logo'             => 'nullable|image|max:2048',
+        ]);
+
+        if ($request->hasFile('logo')) {
+            // Eliminar logo anterior si existe
+            if ($config->logo_path && Storage::disk('public')->exists($config->logo_path)) {
+                Storage::disk('public')->delete($config->logo_path);
+            }
+            $validados['logo_path'] = $request->file('logo')->store('logos', 'public');
+        }
+
+        $config->update($validados);
+
+        // Refrescar singleton
+        ConfiguracionSingleton::obtenerInstancia()->refrescar();
+
+        return response()->json([
+            'message' => 'Configuración actualizada exitosamente.',
+            'configuracion' => $config->fresh(),
+        ]);
     }
-
-    $config->update($validados);
-
-    // Refrescar singleton
-    ConfiguracionSingleton::obtenerInstancia()->refrescar();
-
-    return response()->json([
-        'message' => 'Configuración actualizada exitosamente.',
-        'configuracion' => $config->fresh(),
-    ]);
-}
 }
