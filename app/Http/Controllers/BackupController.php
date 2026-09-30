@@ -24,7 +24,7 @@ class BackupController extends Controller
 
         $proceso = new Process([
             'mysqldump',
-            '--ssl-mode=DISABLED', // <-- Omite la validación de certificado autofirmado en Railway
+            '--skip-ssl',
             '-h', config('database.connections.mysql.host'),
             '-P', config('database.connections.mysql.port'),
             '-u', config('database.connections.mysql.username'),
@@ -75,7 +75,7 @@ class BackupController extends Controller
 
         $proceso = new Process([
             'mysql',
-            '--ssl-mode=DISABLED', // <-- También para restaurar sin bloqueo SSL
+            '--skip-ssl',
             '-h', config('database.connections.mysql.host'),
             '-P', config('database.connections.mysql.port'),
             '-u', config('database.connections.mysql.username'),
