@@ -24,6 +24,7 @@ class BackupController extends Controller
 
         $proceso = new Process([
             'mysqldump',
+            '--ssl-mode=DISABLED', // <-- Omite la validación de certificado autofirmado en Railway
             '-h', config('database.connections.mysql.host'),
             '-P', config('database.connections.mysql.port'),
             '-u', config('database.connections.mysql.username'),
@@ -33,11 +34,11 @@ class BackupController extends Controller
             '--result-file=' . $rutaTemporal,
         ]);
 
+        $proceso->setTimeout(300);
         $proceso->run(null, [
             'SystemRoot' => getenv('SystemRoot') ?: 'C:\\Windows',
             'PATH' => getenv('PATH'),
         ]);
-
 
         if (!$proceso->isSuccessful()) {
             return response()->json([
@@ -50,56 +51,56 @@ class BackupController extends Controller
 
     public function restaurar(Request $request)
     {   
-        
-    if (!$request->user()->tienePermiso('respaldos.restaurar')) {
-        return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
-    }
+        if (!$request->user()->tienePermiso('respaldos.restaurar')) {
+            return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+        }
 
-    $request->validate([
-        'archivo' => ['required', 'file', 'max:51200'],
-    ]);
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:51200'],
+        ]);
 
-    if (strtolower($request->file('archivo')->getClientOriginalExtension()) !== 'sql') {
-        return response()->json([
-            'message' => 'El archivo debe tener extensión .sql',
-        ], 422);
-    }
+        if (strtolower($request->file('archivo')->getClientOriginalExtension()) !== 'sql') {
+            return response()->json([
+                'message' => 'El archivo debe tener extensión .sql',
+            ], 422);
+        }
 
-    if (!file_exists(storage_path('app/backups_restaurar'))) {
-        mkdir(storage_path('app/backups_restaurar'), 0755, true);
-    }
+        if (!file_exists(storage_path('app/backups_restaurar'))) {
+            mkdir(storage_path('app/backups_restaurar'), 0755, true);
+        }
 
-    $nombreOriginal = $request->file('archivo')->getClientOriginalName();
-    $rutaCompleta = storage_path('app/backups_restaurar/' . $nombreOriginal);
-    $request->file('archivo')->move(storage_path('app/backups_restaurar'), $nombreOriginal);
+        $nombreOriginal = $request->file('archivo')->getClientOriginalName();
+        $rutaCompleta = storage_path('app/backups_restaurar/' . $nombreOriginal);
+        $request->file('archivo')->move(storage_path('app/backups_restaurar'), $nombreOriginal);
 
-    $proceso = new Process([
-        'mysql',
-        '-h', config('database.connections.mysql.host'),
-        '-P', config('database.connections.mysql.port'),
-        '-u', config('database.connections.mysql.username'),
-        '--password=' . config('database.connections.mysql.password'),
-        '--protocol=TCP',
-        config('database.connections.mysql.database'),
-    ]);
+        $proceso = new Process([
+            'mysql',
+            '--ssl-mode=DISABLED', // <-- También para restaurar sin bloqueo SSL
+            '-h', config('database.connections.mysql.host'),
+            '-P', config('database.connections.mysql.port'),
+            '-u', config('database.connections.mysql.username'),
+            '--password=' . config('database.connections.mysql.password'),
+            '--protocol=TCP',
+            config('database.connections.mysql.database'),
+        ]);
 
-    $proceso->setInput(fopen($rutaCompleta, 'r'));
-    $proceso->setTimeout(300);
-    $proceso->run(null, [
-        'SystemRoot' => getenv('SystemRoot') ?: 'C:\\Windows',
-        'PATH' => getenv('PATH'),
-    ]);
+        $proceso->setInput(fopen($rutaCompleta, 'r'));
+        $proceso->setTimeout(300);
+        $proceso->run(null, [
+            'SystemRoot' => getenv('SystemRoot') ?: 'C:\\Windows',
+            'PATH' => getenv('PATH'),
+        ]);
 
-    if (file_exists($rutaCompleta)) {
-        unlink($rutaCompleta);
-    }
+        if (file_exists($rutaCompleta)) {
+            unlink($rutaCompleta);
+        }
 
-    if (!$proceso->isSuccessful()) {
-        return response()->json([
-            'message' => 'Error al restaurar el respaldo: ' . $proceso->getErrorOutput(),
-        ], 500);
-    }
+        if (!$proceso->isSuccessful()) {
+            return response()->json([
+                'message' => 'Error al restaurar el respaldo: ' . $proceso->getErrorOutput(),
+            ], 500);
+        }
 
-    return response()->json(['message' => 'Base de datos restaurada correctamente.']);
+        return response()->json(['message' => 'Base de datos restaurada correctamente.']);
     }
 }
