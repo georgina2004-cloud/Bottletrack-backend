@@ -6,11 +6,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Auditable;
+use App\Traits\Auditable;
 
 class Venta extends Model
 {
     use HasFactory;
+    use Auditable;
 
     protected $fillable = [
         'numero_factura',
