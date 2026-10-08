@@ -15,6 +15,9 @@ use App\Http\Controllers\SetupController;
 use App\Http\Controllers\PresentacionProductoController;
 use App\Http\Controllers\MiPerfilController;
 use App\Http\Controllers\BackupController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\PerfilController;
+
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -29,11 +32,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/configuracion', [SetupController::class, 'actualizar']);
     Route::get('/mis-permisos', [MiPerfilController::class, 'permisos']);
 
+    Route::get('/perfil', [PerfilController::class, 'mostrar']);
+    Route::put('/perfil', [PerfilController::class, 'actualizar']);
+
+    Route::get('/productos/alertas-vencimiento', [ProductoController::class, 'alertasVencimiento']);
+
+    
     Route::get('/productos/buscar-por-codigo/{codigo}', [ProductoController::class, 'buscarPorCodigo']);
     Route::apiResource('productos', ProductoController::class);
     Route::apiResource('categorias', CategoriaController::class);
-    Route::apiResource('proveedores', ProveedorController::class);
+    Route::apiResource('proveedores', ProveedorController::class)->parameters(['proveedores' => 'proveedor']);
     Route::get('/dashboard/resumen-inventario', [DashboardController::class, 'resumenInventario']);
+    
+    
+    Route::get('/admin/audit-logs', [AuditLogController::class, 'index']);
 
     Route::get('/ventas', [VentaController::class, 'index']);
     Route::post('/ventas', [VentaController::class, 'store']);

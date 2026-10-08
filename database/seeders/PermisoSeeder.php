@@ -64,6 +64,9 @@ class PermisoSeeder extends Seeder
 
             // Dashboard
             ['clave' => 'dashboard.ver', 'descripcion' => 'Visualizar el panel principal con métricas clave'],
+
+            // Auditoría
+            ['clave' => 'auditoria.ver', 'descripcion' => 'Consultar el historial de cambios realizados en el sistema'],
         ];
 
         foreach ($permisos as $p) {
@@ -112,6 +115,7 @@ class PermisoSeeder extends Seeder
                 'reportes.exportar',
                 'roles.ver',
                 'configuracion.ver',
+                'auditoria.ver',
             ])->pluck('id')->toArray();
             $auditor->permisos()->sync($permisosAuditor);
         }

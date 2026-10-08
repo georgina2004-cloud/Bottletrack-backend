@@ -123,6 +123,12 @@ class SetupController extends Controller
             return response()->json(['message' => 'Configuración no encontrada.'], 404);
         }
 
+        if ($request->filled('moneda') && $request->input('moneda') !== $config->moneda) {
+        return response()->json([
+            'message' => 'La moneda no se puede modificar una vez configurada el sistema.',], 422);
+        }
+
+
         $validados = $request->validate([
             'nombre_licoreria' => 'required|string|max:255',
             'eslogan'          => 'nullable|string|max:255',

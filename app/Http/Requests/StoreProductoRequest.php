@@ -26,6 +26,7 @@ class StoreProductoRequest extends FormRequest
             'presentacion_ml' => 'nullable|numeric|min:0',
             'ubicacion' => 'nullable|string|max:100',
             'imagen' => 'nullable|image|max:2048',
+            'fecha_vencimiento' => 'nullable|date',
         ];
     }
 

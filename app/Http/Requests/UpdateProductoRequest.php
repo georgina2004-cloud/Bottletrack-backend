@@ -29,6 +29,7 @@ class UpdateProductoRequest extends FormRequest
         'ubicacion' => 'nullable|string|max:100',
         'activo' => 'nullable|boolean',
         'imagen' => 'nullable|image|max:2048',
+        'fecha_vencimiento' => 'nullable|date',
         ];
     }
 

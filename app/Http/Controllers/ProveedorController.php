@@ -37,6 +37,7 @@ class ProveedorController extends Controller
             'telefono' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:150',
             'direccion' => 'nullable|string|max:255',
+            'ruc.unique' => 'El RUC ya se encuentra registrado.',
         ]);
 
         $proveedor = Proveedor::create($validated);
@@ -65,6 +66,7 @@ class ProveedorController extends Controller
             'email' => 'nullable|email|max:150',
             'direccion' => 'nullable|string|max:255',
             'activo' => 'nullable|boolean',
+            'ruc.unique' => 'El RUC ya se encuentra registrado.',
         ]);
 
         $proveedor->update($validated);

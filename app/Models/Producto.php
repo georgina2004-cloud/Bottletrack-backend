@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
+use App\Traits\Auditable;  
 
 class Producto extends Model
 {
     use HasFactory;
+    use Auditable;  
 
     protected $fillable = [
         'codigo_barras',
@@ -26,6 +28,7 @@ class Producto extends Model
         'ubicacion',
         'activo',
         'imagen_path',
+        'fecha_vencimiento'
     ];
 
     protected $casts = [
@@ -33,6 +36,7 @@ class Producto extends Model
         'precio_venta' => 'decimal:2',
         'presentacion_ml' => 'decimal:2',
         'activo' => 'boolean',
+        'fecha_vencimiento' => 'date:Y-m-d',
     ];
 
     protected $appends = ['imagen_url'];

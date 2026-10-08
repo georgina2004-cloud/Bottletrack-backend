@@ -163,4 +163,25 @@ class ProductoController extends Controller
             'producto' => $producto,
         ]);
     }
+
+
+    public function alertasVencimiento(Request $request)
+    {
+    $dias = (int) $request->input('dias', 30);
+    $hoy = now()->toDateString();
+    $limite = now()->addDays($dias)->toDateString();
+
+    $vencidos = Producto::where('activo', true)
+        ->whereNotNull('fecha_vencimiento')
+        ->whereDate('fecha_vencimiento', '<', $hoy)
+        ->get(['id', 'nombre', 'fecha_vencimiento']);
+
+    $porVencer = Producto::where('activo', true)
+        ->whereNotNull('fecha_vencimiento')
+        ->whereDate('fecha_vencimiento', '>=', $hoy)
+        ->whereDate('fecha_vencimiento', '<=', $limite)
+        ->get(['id', 'nombre', 'fecha_vencimiento']);
+
+    return response()->json(['vencidos' => $vencidos, 'por_vencer' => $porVencer]);
+    }
 }
