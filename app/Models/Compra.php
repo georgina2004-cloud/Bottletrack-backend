@@ -19,11 +19,13 @@ class Compra extends Model
         'fecha',
         'numero_factura_proveedor',
         'total',
+        'estado_activa'
     ];
 
     protected $casts = [
         'fecha' => 'date',
         'total' => 'decimal:2',
+        'estado_activa' => 'boolean'
     ];
 
     public function proveedor(): BelongsTo

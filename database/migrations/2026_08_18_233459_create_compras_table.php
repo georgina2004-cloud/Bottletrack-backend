@@ -23,6 +23,7 @@ return new class extends Migration
         $table->string('numero_factura_proveedor', 50)->nullable();
         $table->decimal('total', 12, 2)->default(0);
         $table->timestamps();
+        $table->boolean('estado_activa')->default(true);
         });
     }
 

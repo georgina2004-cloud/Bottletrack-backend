@@ -31,6 +31,10 @@ trait Auditable
             $antes = static::filtrarAtributosOcultos($model, $original);
             $despues = static::filtrarAtributosOcultos($model, $cambios);
 
+            $accion = (array_key_exists('estado_activa', $cambios) && !$model->estado_activa)
+            ? 'anular'
+            : 'update';
+
             static::registrar('update', $model, $antes, $despues);
         });
 

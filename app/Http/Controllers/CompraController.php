@@ -6,6 +6,7 @@ use App\Http\Requests\StoreCompraRequest;
 use App\Models\Compra;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Models\Producto;
 
 class CompraController extends Controller
 {
@@ -50,6 +51,7 @@ class CompraController extends Controller
                 'fecha' => now()->toDateString(),
                 'numero_factura_proveedor' => $datosValidados['numero_factura_proveedor'] ?? null,
                 'total' => $total,
+                'estado_activa' => true,
             ]);
 
             foreach ($lineasCalculadas as $linea) {
@@ -69,4 +71,37 @@ class CompraController extends Controller
     {
         return response()->json($compra->load(['detalles.producto', 'proveedor', 'usuario']));
     }
+
+    public function anular(Request $request, Compra $compra)
+{
+    if (!$request->user()->tienePermiso('compras.anular')) {
+        return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+    }
+
+    if (!$compra->estado_activa) {
+        return response()->json(['message' => 'Esta compra ya está anulada.'], 409);
+    }
+
+    DB::transaction(function () use ($compra) {
+        // Anular una compra resta stock: validar antes de borrar los detalles
+        $porProducto = $compra->detalles->groupBy('producto_id')
+            ->map(fn ($lineas) => $lineas->sum('cantidad'));
+
+        foreach ($porProducto as $productoId => $cantidad) {
+            $producto = Producto::lockForUpdate()->findOrFail($productoId);
+
+            if ($producto->stock_actual < $cantidad) {
+                abort(422, "No se puede anular: el stock de '{$producto->nombre}' quedaría negativo (disponible: {$producto->stock_actual}, a descontar: {$cantidad}).");
+            }
+        }
+
+        foreach ($compra->detalles as $detalle) {
+            $detalle->delete();
+        }
+
+        $compra->update(['estado_activa' => false]);
+    });
+
+    return response()->json(['message' => 'Compra anulada correctamente. El stock fue descontado.']);
+}
 }

@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/compras', [CompraController::class, 'index']);
     Route::post('/compras', [CompraController::class, 'store']);
     Route::get('/compras/{compra}', [CompraController::class, 'show']);
+    Route::post('/compras/{compra}/anular', [CompraController::class, 'anular']);
 
     Route::get('/dashboard/tendencia', [DashboardController::class, 'tendencia']);
     Route::get('/dashboard/resumen-ventas-compras', [DashboardController::class, 'resumenVentasCompras']);
