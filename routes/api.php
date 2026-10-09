@@ -37,7 +37,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/productos/alertas-vencimiento', [ProductoController::class, 'alertasVencimiento']);
 
-    
+    Route::get('/productos/lookup-barcode', [ProductoController::class, 'lookupBarcode']);
     Route::get('/productos/buscar-por-codigo/{codigo}', [ProductoController::class, 'buscarPorCodigo']);
     Route::apiResource('productos', ProductoController::class);
     Route::apiResource('categorias', CategoriaController::class);

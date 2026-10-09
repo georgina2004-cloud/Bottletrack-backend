@@ -7,6 +7,9 @@ use App\Http\Requests\UpdateProductoRequest;
 use App\Models\Producto;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class ProductoController extends Controller
 {
@@ -183,5 +186,116 @@ class ProductoController extends Controller
         ->get(['id', 'nombre', 'fecha_vencimiento']);
 
     return response()->json(['vencidos' => $vencidos, 'por_vencer' => $porVencer]);
+    }
+
+        public function lookupBarcode(Request $request)
+    {
+        if (!$request->user()->tienePermiso('productos.crear')) {
+            return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+        }
+
+        $codigo = trim((string) $request->query('barcode', ''));
+
+        if ($codigo === '' || mb_strlen($codigo) > 50) {
+            return response()->json(['message' => 'Código de barras inválido.'], 422);
+        }
+
+        $local = Producto::where('codigo_barras', $codigo)
+            ->where('activo', true)
+            ->first(['id', 'nombre']);
+
+        if ($local) {
+            return response()->json([
+                'existe_local' => true,
+                'producto' => $local,
+                'found' => false,
+                'nombre' => '',
+                'marca' => '',
+                'categoria_sugerida' => '',
+            ]);
+        }
+
+        return response()->json(['existe_local' => false] + $this->consultarOpenFoodFacts($codigo));
+    }
+
+    private function consultarOpenFoodFacts(string $codigo): array
+    {
+        $vacio = ['found' => false, 'nombre' => '', 'marca' => '', 'categoria_sugerida' => ''];
+
+        // Open Food Facts solo maneja EAN/UPC numéricos
+        if (!ctype_digit($codigo) || strlen($codigo) < 8 || strlen($codigo) > 14) {
+            return $vacio;
+        }
+
+        $cacheKey = "off_barcode_{$codigo}";
+
+        if ($cacheado = Cache::get($cacheKey)) {
+            return $cacheado;
+        }
+
+        try {
+            $respuesta = Http::timeout(5)
+                ->withHeaders(['User-Agent' => 'BottleTrack/1.0 (proyecto academico)'])
+                ->get("https://world.openfoodfacts.org/api/v2/product/{$codigo}.json", [
+                    'fields' => 'product_name,brands,categories_tags',
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('Open Food Facts: fallo de conexión', ['barcode' => $codigo, 'error' => $e->getMessage()]);
+            return $vacio;
+        }
+
+        if (!$respuesta->successful() || (int) $respuesta->json('status') !== 1) {
+            return $vacio;
+        }
+
+        $producto = $respuesta->json('product', []);
+        $nombre = $this->limpiarTexto((string) ($producto['product_name'] ?? ''));
+
+        if ($nombre === '') {
+            return $vacio;
+        }
+
+        $marcas = explode(',', (string) ($producto['brands'] ?? ''));
+
+        $resultado = [
+            'found' => true,
+            'nombre' => $nombre,
+            'marca' => $this->limpiarTexto($marcas[0] ?? ''),
+            'categoria_sugerida' => $this->mapearCategoria($producto['categories_tags'] ?? []),
+        ];
+
+        Cache::put($cacheKey, $resultado, now()->addDay());
+
+        return $resultado;
+    }
+
+    private function limpiarTexto(string $texto): string
+    {
+        return mb_substr(trim(strip_tags($texto)), 0, 150);
+    }
+
+    private function mapearCategoria(array $tags): string
+    {
+        $reglas = [
+            'Ron' => '/\b(rums?|rhums?)\b/',
+            'Whisky' => '/\b(whiskey|whisky|whiskies|bourbons?)\b/',
+            'Vodka' => '/\bvodkas?\b/',
+            'Tequila' => '/\b(tequilas?|mezcals?)\b/',
+            'Ginebra' => '/\bgins?\b/',
+            'Brandy' => '/\b(brandy|brandies|cognacs?)\b/',
+            'Licor' => '/\bliqueurs?\b/',
+            'Cerveza' => '/\b(beers?|lagers?)\b/',
+            'Vino' => '/\b(wines?|champagnes?)\b/',
+        ];
+
+        $texto = strtolower(implode(' ', $tags));
+
+        foreach ($reglas as $categoria => $regex) {
+            if (preg_match($regex, $texto)) {
+                return $categoria;
+            }
+        }
+
+        return '';
     }
 }
