@@ -7,6 +7,7 @@ use App\Models\Producto;
 use App\Models\Venta;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class VentaController extends Controller
 {
@@ -29,6 +30,7 @@ class VentaController extends Controller
         return response()->json($query->paginate(15));
     }
 
+
     public function store(StoreVentaRequest $request)
     {
         $datosValidados = $request->validated();
@@ -36,15 +38,32 @@ class VentaController extends Controller
         $venta = DB::transaction(function () use ($datosValidados, $request) {
             $subtotal = 0;
             $lineasCalculadas = [];
+            $unidadesPorProducto = [];
 
-            foreach ($datosValidados['productos'] as $item) {
-                $producto = Producto::findOrFail($item['producto_id']);
-                $presentacion = \App\Models\PresentacionProducto::findOrFail($item['presentacion_id']);
+            foreach ($datosValidados['productos'] as $i => $item) {
+                // lockForUpdate: evita que dos ventas simultáneas lean el mismo stock
+                $producto = Producto::lockForUpdate()->findOrFail($item['producto_id']);
+
+                // La presentación debe pertenecer a ese producto
+                $presentacion = $producto->presentaciones()->find($item['presentacion_id']);
+                if (!$presentacion) {
+                    throw ValidationException::withMessages([
+                        "productos.$i.presentacion_id" =>
+                            "La presentación no corresponde al producto '{$producto->nombre}'.",
+                    ]);
+                }
 
                 $unidadesReales = $presentacion->unidades_equivalentes * $item['cantidad'];
 
-                if ($producto->stock_actual < $unidadesReales) {
-                    throw new \Exception("Stock insuficiente para '{$producto->nombre}'. Disponible: {$producto->stock_actual} unidades.");
+                // Se acumula por producto: el mismo producto puede venir en varias líneas
+                $unidadesPorProducto[$producto->id] =
+                    ($unidadesPorProducto[$producto->id] ?? 0) + $unidadesReales;
+
+                if ($producto->stock_actual < $unidadesPorProducto[$producto->id]) {
+                    throw ValidationException::withMessages([
+                        "productos.$i.cantidad" =>
+                            "Stock insuficiente para '{$producto->nombre}'. Disponible: {$producto->stock_actual} unidades.",
+                    ]);
                 }
 
                 $precioUnitario = $presentacion->precio_venta;
@@ -59,9 +78,15 @@ class VentaController extends Controller
                 ];
             }
 
-            $descuento = $datosValidados['descuento'] ?? 0;
+            $descuento = round($datosValidados['descuento'] ?? 0, 2);
+            if ($descuento > $subtotal) {
+                throw ValidationException::withMessages([
+                    'descuento' => 'El descuento no puede superar el subtotal.',
+                ]);
+            }
+
             $impuesto = round(($subtotal - $descuento) * 0.15, 2);
-            $total = $subtotal - $descuento + $impuesto;
+            $total = round($subtotal - $descuento + $impuesto, 2);
 
             $venta = Venta::create([
                 'numero_factura' => 'FAC-' . strtoupper(uniqid()),
@@ -88,8 +113,13 @@ class VentaController extends Controller
         ], 201);
     }
 
-    public function show(Venta $venta)
+    public function show(Request $request, Venta $venta)
     {
+        if (!$request->user()->tienePermiso('ventas.ver_todas')
+            && $venta->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'No tienes permiso para ver esta venta.'], 403);
+        }
+
         return response()->json($venta->load(['detalles.producto', 'usuario']));
     }
 
@@ -97,6 +127,11 @@ class VentaController extends Controller
     {
         if (!$request->user()->tienePermiso('ventas.anular')) {
             return response()->json(['message' => 'No tienes permiso para realizar esta acción.'], 403);
+        }
+
+        if (!$request->user()->tienePermiso('ventas.ver_todas')
+            && $venta->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Solo puedes anular tus propias ventas.'], 403);
         }
 
         if (!$venta->estado_activa) {
