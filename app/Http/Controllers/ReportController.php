@@ -10,6 +10,7 @@ use App\Models\Venta;
 use App\Services\ConfiguracionSingleton;
 use App\Services\Reports\ReportFactory;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -107,14 +108,23 @@ class ReportController extends Controller
         $hasta = $request->input('hasta', now()->toDateString());
         $vendedorId = $request->input('vendedor_id');
 
+        if ($desde && str_contains($desde, '/')) {
+            $desde = Carbon::createFromFormat('d/m/Y', $desde)->format('Y-m-d');
+        }
+        if ($hasta && str_contains($hasta, '/')) {
+            $hasta = Carbon::createFromFormat('d/m/Y', $hasta)->format('Y-m-d');
+        }
+
         $query = User::query()
             ->withCount(['ventas as transacciones' => function ($q) use ($desde, $hasta) {
                 $q->where('estado_activa', true)
-                  ->whereBetween('fecha', ["{$desde} 00:00:00", "{$hasta} 23:59:59"]);
+                  ->whereDate('fecha', '>=', $desde)
+                  ->whereDate('fecha', '<=', $hasta);
             }])
             ->withSum(['ventas as total_facturado' => function ($q) use ($desde, $hasta) {
                 $q->where('estado_activa', true)
-                  ->whereBetween('fecha', ["{$desde} 00:00:00", "{$hasta} 23:59:59"]);
+                  ->whereDate('fecha', '>=', $desde)
+                  ->whereDate('fecha', '<=', $hasta);
             }], 'total');
 
         if ($request->filled('vendedor_id') && $vendedorId !== 'todos') {
@@ -172,13 +182,27 @@ class ReportController extends Controller
 
     public function movimientosInventario(Request $request)
     {
-        // 1. Entradas por Compras
+        $desde = $request->input('desde');
+        $hasta = $request->input('hasta');
+
+        // Normalizar en caso de que el frontend envíe DD/MM/YYYY
+        if ($desde && str_contains($desde, '/')) {
+            $desde = Carbon::createFromFormat('d/m/Y', $desde)->format('Y-m-d');
+        }
+        if ($hasta && str_contains($hasta, '/')) {
+            $hasta = Carbon::createFromFormat('d/m/Y', $hasta)->format('Y-m-d');
+        }
+
+        $desdeTimestamp = $desde ? "{$desde} 00:00:00" : null;
+        $hastaTimestamp = $hasta ? "{$hasta} 23:59:59" : null;
+
+        // 1. Entradas por Compras Activas
         $entradas = DB::table('detalle_compras')
             ->join('compras', 'detalle_compras.compra_id', '=', 'compras.id')
             ->join('productos', 'detalle_compras.producto_id', '=', 'productos.id')
             ->selectRaw("compras.fecha, productos.nombre as producto, 'Entrada' as tipo, detalle_compras.cantidad, detalle_compras.precio_unitario")
-            ->when($request->filled('desde'), fn ($q) => $q->whereDate('compras.fecha', '>=', $request->input('desde')))
-            ->when($request->filled('hasta'), fn ($q) => $q->whereDate('compras.fecha', '<=', $request->input('hasta')));
+            ->when($desdeTimestamp, fn ($q) => $q->where('compras.fecha', '>=', $desdeTimestamp))
+            ->when($hastaTimestamp, fn ($q) => $q->where('compras.fecha', '<=', $hastaTimestamp));
 
         // 2. Salidas por Ventas Activas
         $salidas = DB::table('detalle_ventas')
@@ -186,8 +210,8 @@ class ReportController extends Controller
             ->join('productos', 'detalle_ventas.producto_id', '=', 'productos.id')
             ->where('ventas.estado_activa', true)
             ->selectRaw("ventas.fecha, productos.nombre as producto, 'Salida' as tipo, detalle_ventas.cantidad, detalle_ventas.precio_unitario")
-            ->when($request->filled('desde'), fn ($q) => $q->whereDate('ventas.fecha', '>=', $request->input('desde')))
-            ->when($request->filled('hasta'), fn ($q) => $q->whereDate('ventas.fecha', '<=', $request->input('hasta')));
+            ->when($desdeTimestamp, fn ($q) => $q->where('ventas.fecha', '>=', $desdeTimestamp))
+            ->when($hastaTimestamp, fn ($q) => $q->where('ventas.fecha', '<=', $hastaTimestamp));
 
         // 3. Entradas/Reingresos por Ventas Anuladas
         $anulaciones = DB::table('detalle_ventas')
@@ -195,8 +219,8 @@ class ReportController extends Controller
             ->join('productos', 'detalle_ventas.producto_id', '=', 'productos.id')
             ->where('ventas.estado_activa', false)
             ->selectRaw("ventas.updated_at as fecha, productos.nombre as producto, 'Anulación' as tipo, detalle_ventas.cantidad, detalle_ventas.precio_unitario")
-            ->when($request->filled('desde'), fn ($q) => $q->whereDate('ventas.updated_at', '>=', $request->input('desde')))
-            ->when($request->filled('hasta'), fn ($q) => $q->whereDate('ventas.updated_at', '<=', $request->input('hasta')));
+            ->when($desdeTimestamp, fn ($q) => $q->where('ventas.updated_at', '>=', $desdeTimestamp))
+            ->when($hastaTimestamp, fn ($q) => $q->where('ventas.updated_at', '<=', $hastaTimestamp));
 
         $datos = $entradas->unionAll($salidas)->unionAll($anulaciones)->orderByDesc('fecha')->get()->map(fn ($m) => [
             'fecha' => $m->fecha,
