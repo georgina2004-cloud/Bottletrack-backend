@@ -107,7 +107,6 @@ class ReportController extends Controller
         $hasta = $request->input('hasta', now()->toDateString());
         $vendedorId = $request->input('vendedor_id');
 
-        // Consultamos a los usuarios para incluir a los que tengan 0 ventas
         $query = User::query()
             ->withCount(['ventas as transacciones' => function ($q) use ($desde, $hasta) {
                 $q->where('estado_activa', true)
@@ -118,7 +117,6 @@ class ReportController extends Controller
                   ->whereBetween('fecha', ["{$desde} 00:00:00", "{$hasta} 23:59:59"]);
             }], 'total');
 
-        // Si se envió el filtro de un usuario en particular
         if ($request->filled('vendedor_id') && $vendedorId !== 'todos') {
             $query->where('id', $vendedorId);
         }
@@ -132,7 +130,6 @@ class ReportController extends Controller
             ];
         });
 
-        // Si se solicita exportar a PDF o Excel
         if (in_array($request->input('formato'), ['pdf', 'excel'])) {
             $datosExportar = $vendedores->map(fn ($v) => [
                 'vendedor' => $v['vendedor'],
@@ -148,7 +145,6 @@ class ReportController extends Controller
             );
         }
 
-        // Respuesta JSON directa para el frontend
         return response()->json([
             'data' => $vendedores,
             'total_general_transacciones' => $vendedores->sum('transacciones'),
@@ -176,6 +172,7 @@ class ReportController extends Controller
 
     public function movimientosInventario(Request $request)
     {
+        // 1. Entradas por Compras
         $entradas = DB::table('detalle_compras')
             ->join('compras', 'detalle_compras.compra_id', '=', 'compras.id')
             ->join('productos', 'detalle_compras.producto_id', '=', 'productos.id')
@@ -183,6 +180,7 @@ class ReportController extends Controller
             ->when($request->filled('desde'), fn ($q) => $q->whereDate('compras.fecha', '>=', $request->input('desde')))
             ->when($request->filled('hasta'), fn ($q) => $q->whereDate('compras.fecha', '<=', $request->input('hasta')));
 
+        // 2. Salidas por Ventas Activas
         $salidas = DB::table('detalle_ventas')
             ->join('ventas', 'detalle_ventas.venta_id', '=', 'ventas.id')
             ->join('productos', 'detalle_ventas.producto_id', '=', 'productos.id')
@@ -191,7 +189,16 @@ class ReportController extends Controller
             ->when($request->filled('desde'), fn ($q) => $q->whereDate('ventas.fecha', '>=', $request->input('desde')))
             ->when($request->filled('hasta'), fn ($q) => $q->whereDate('ventas.fecha', '<=', $request->input('hasta')));
 
-        $datos = $entradas->unionAll($salidas)->orderByDesc('fecha')->get()->map(fn ($m) => [
+        // 3. Entradas/Reingresos por Ventas Anuladas
+        $anulaciones = DB::table('detalle_ventas')
+            ->join('ventas', 'detalle_ventas.venta_id', '=', 'ventas.id')
+            ->join('productos', 'detalle_ventas.producto_id', '=', 'productos.id')
+            ->where('ventas.estado_activa', false)
+            ->selectRaw("ventas.updated_at as fecha, productos.nombre as producto, 'Anulación' as tipo, detalle_ventas.cantidad, detalle_ventas.precio_unitario")
+            ->when($request->filled('desde'), fn ($q) => $q->whereDate('ventas.updated_at', '>=', $request->input('desde')))
+            ->when($request->filled('hasta'), fn ($q) => $q->whereDate('ventas.updated_at', '<=', $request->input('hasta')));
+
+        $datos = $entradas->unionAll($salidas)->unionAll($anulaciones)->orderByDesc('fecha')->get()->map(fn ($m) => [
             'fecha' => $m->fecha,
             'producto' => $m->producto,
             'tipo' => $m->tipo,
