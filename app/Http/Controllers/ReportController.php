@@ -3,15 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Compra;
+use App\Models\ConfiguracionEmpresa;
 use App\Models\Producto;
+use App\Models\User;
 use App\Models\Venta;
+use App\Services\ConfiguracionSingleton;
 use App\Services\Reports\ReportFactory;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Barryvdh\DomPDF\Facade\Pdf;
-use App\Models\ConfiguracionEmpresa;
-
 
 class ReportController extends Controller
 {
@@ -39,9 +40,9 @@ class ReportController extends Controller
             return $venta->detalles->map(fn ($d) => [
                 'factura' => $venta->numero_factura,
                 'fecha' => $venta->fecha,
-                'vendedor' => $venta->usuario->name,
+                'vendedor' => $venta->usuario->name ?? 'N/A',
                 'cliente' => $venta->cliente_nombre ?? 'Consumidor final',
-                'producto' => $d->producto->nombre,
+                'producto' => $d->producto->nombre ?? 'N/A',
                 'cantidad' => $d->cantidad,
                 'precio_unitario' => number_format($d->precio_unitario, 2),
                 'subtotal_linea' => number_format($d->subtotal, 2),
@@ -91,7 +92,7 @@ class ReportController extends Controller
         $datos = $query->get()->map(fn ($v) => [
             'factura' => $v->numero_factura,
             'cliente' => $v->cliente_nombre ?? 'Consumidor final',
-            'vendedor' => $v->usuario->name,
+            'vendedor' => $v->usuario->name ?? 'N/A',
             'fecha' => $v->fecha,
             'total' => number_format($v->total, 2),
             'estado' => $v->estado_activa ? 'Activa' : 'Anulada',
@@ -102,21 +103,57 @@ class ReportController extends Controller
 
     public function ventasPorVendedor(Request $request)
     {
-        $query = Venta::where('estado_activa', true)
-            ->join('users', 'ventas.user_id', '=', 'users.id')
-            ->selectRaw('users.name as vendedor, COUNT(ventas.id) as total_ventas, SUM(ventas.total) as monto_total')
-            ->groupBy('users.id', 'users.name');
+        $desde = $request->input('desde', now()->startOfMonth()->toDateString());
+        $hasta = $request->input('hasta', now()->toDateString());
+        $vendedorId = $request->input('vendedor_id');
 
-        if ($request->filled('desde')) $query->whereDate('ventas.fecha', '>=', $request->input('desde'));
-        if ($request->filled('hasta')) $query->whereDate('ventas.fecha', '<=', $request->input('hasta'));
+        // Consultamos a los usuarios para incluir a los que tengan 0 ventas
+        $query = User::query()
+            ->withCount(['ventas as transacciones' => function ($q) use ($desde, $hasta) {
+                $q->where('estado_activa', true)
+                  ->whereBetween('fecha', ["{$desde} 00:00:00", "{$hasta} 23:59:59"]);
+            }])
+            ->withSum(['ventas as total_facturado' => function ($q) use ($desde, $hasta) {
+                $q->where('estado_activa', true)
+                  ->whereBetween('fecha', ["{$desde} 00:00:00", "{$hasta} 23:59:59"]);
+            }], 'total');
 
-        $datos = $query->orderByDesc('monto_total')->get()->map(fn ($f) => [
-            'vendedor' => $f->vendedor,
-            'total_ventas' => $f->total_ventas,
-            'monto_total' => number_format($f->monto_total, 2),
+        // Si se envió el filtro de un usuario en particular
+        if ($request->filled('vendedor_id') && $vendedorId !== 'todos') {
+            $query->where('id', $vendedorId);
+        }
+
+        $vendedores = $query->orderBy('name')->get()->map(function ($u) {
+            return [
+                'id' => $u->id,
+                'vendedor' => $u->name,
+                'transacciones' => (int) ($u->transacciones ?? 0),
+                'total_facturado' => (float) ($u->total_facturado ?? 0),
+            ];
+        });
+
+        // Si se solicita exportar a PDF o Excel
+        if (in_array($request->input('formato'), ['pdf', 'excel'])) {
+            $datosExportar = $vendedores->map(fn ($v) => [
+                'vendedor' => $v['vendedor'],
+                'transacciones' => $v['transacciones'] . ' transacciones',
+                'total_facturado' => 'C$ ' . number_format($v['total_facturado'], 2),
+            ]);
+
+            return $this->responder(
+                $request,
+                'Ventas_Por_Vendedor',
+                ['Vendedor / Cajero', 'Transacciones Realizadas', 'Total Facturado'],
+                $datosExportar
+            );
+        }
+
+        // Respuesta JSON directa para el frontend
+        return response()->json([
+            'data' => $vendedores,
+            'total_general_transacciones' => $vendedores->sum('transacciones'),
+            'total_general_facturado' => $vendedores->sum('total_facturado'),
         ]);
-
-        return $this->responder($request, 'Ventas_Por_Vendedor', ['Vendedor', 'Total Ventas', 'Monto Total'], $datos);
     }
 
     public function comprasPorProveedor(Request $request)
@@ -167,39 +204,36 @@ class ReportController extends Controller
 
     public function facturaPdf(Venta $venta)
     {
-    $venta->load(['detalles.producto', 'usuario']);
+        $venta->load(['detalles.producto', 'usuario']);
 
-    $empresa = \App\Services\ConfiguracionSingleton::obtenerInstancia()->obtenerConfiguracion();
+        $empresa = ConfiguracionSingleton::obtenerInstancia()->obtenerConfiguracion();
 
-    $pdf = Pdf::loadView('reportes.factura-ticket', [
-        'venta' => $venta,
-        'empresa' => $empresa,
-    ]);
+        $pdf = Pdf::loadView('reportes.factura-ticket', [
+            'venta' => $venta,
+            'empresa' => $empresa,
+        ]);
 
-    $alturaCalculada = $this->calcularAlturaFactura($venta, $empresa);
-    $pdf->setPaper([0, 0, 226.77, $alturaCalculada]);
+        $alturaCalculada = $this->calcularAlturaFactura($venta, $empresa);
+        $pdf->setPaper([0, 0, 226.77, $alturaCalculada]);
 
-    return $pdf->stream("Factura_{$venta->numero_factura}.pdf");
+        return $pdf->stream("Factura_{$venta->numero_factura}.pdf");
     }
 
     private function calcularAlturaFactura(Venta $venta, $empresa): float
     {
-    
-    $alturaBase = 300; 
-    $alturaPorLinea = 24;
-    $alturaProductos = $venta->detalles->count() * $alturaPorLinea;
+        $alturaBase = 300; 
+        $alturaPorLinea = 24;
+        $alturaProductos = $venta->detalles->count() * $alturaPorLinea;
 
-    if ($empresa && $empresa->eslogan) {
-        $alturaBase += 12; 
-    }
-    if ($empresa && $empresa->logo_path) {
-        $alturaBase += 4; 
-    }
-    
-    $alturaProductos = $venta->detalles->count() * $alturaPorLinea;
+        if ($empresa && $empresa->eslogan) {
+            $alturaBase += 12; 
+        }
+        if ($empresa && $empresa->logo_path) {
+            $alturaBase += 4; 
+        }
 
-    $alturaTotal = $alturaBase + $alturaProductos;
+        $alturaTotal = $alturaBase + $alturaProductos;
 
-    return $alturaTotal * 1.25;
+        return $alturaTotal * 1.25;
     }
 }
