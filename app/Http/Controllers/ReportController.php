@@ -162,6 +162,64 @@ class ReportController extends Controller
         ]);
     }
 
+    public function gananciasPorPeriodo(Request $request)
+    {
+    $desde = $request->input('desde', now()->startOfMonth()->toDateString());
+    $hasta = $request->input('hasta', now()->toDateString());
+    $agrupar = $request->input('agrupar') === 'mes' ? 'mes' : 'dia';
+
+    if ($desde && str_contains($desde, '/')) {
+        $desde = Carbon::createFromFormat('d/m/Y', $desde)->format('Y-m-d');
+    }
+    if ($hasta && str_contains($hasta, '/')) {
+        $hasta = Carbon::createFromFormat('d/m/Y', $hasta)->format('Y-m-d');
+    }
+
+    $formato = $agrupar === 'mes' ? '%Y-%m' : '%Y-%m-%d';
+
+    $filas = DB::table('detalle_ventas')
+        ->join('ventas', 'detalle_ventas.venta_id', '=', 'ventas.id')
+        ->join('productos', 'detalle_ventas.producto_id', '=', 'productos.id')
+        ->where('ventas.estado_activa', true) // las ventas anuladas no cuentan
+        ->whereDate('ventas.fecha', '>=', $desde)
+        ->whereDate('ventas.fecha', '<=', $hasta)
+        ->selectRaw('DATE_FORMAT(ventas.fecha, ?) as periodo', [$formato])
+        ->selectRaw('SUM(detalle_ventas.subtotal) as ingresos')
+        ->selectRaw('SUM(detalle_ventas.cantidad * productos.precio_compra) as costo')
+        ->groupBy('periodo')
+        ->orderBy('periodo')
+        ->get()
+        ->map(fn ($f) => [
+            'periodo' => $f->periodo,
+            'ingresos' => (float) $f->ingresos,
+            'costo' => (float) $f->costo,
+            'ganancia' => (float) $f->ingresos - (float) $f->costo,
+        ]);
+
+    if (in_array($request->input('formato'), ['pdf', 'excel'])) {
+        $datosExportar = $filas->map(fn ($f) => [
+            'periodo' => $f['periodo'],
+            'ingresos' => 'C$ ' . number_format($f['ingresos'], 2),
+            'costo' => 'C$ ' . number_format($f['costo'], 2),
+            'ganancia' => 'C$ ' . number_format($f['ganancia'], 2),
+        ]);
+
+        return $this->responder(
+            $request,
+            'Ganancias_Por_Periodo',
+            ['Periodo', 'Ingresos', 'Costo', 'Ganancia'],
+            $datosExportar
+        );
+    }
+
+    return response()->json([
+        'data' => $filas,
+        'total_ingresos' => $filas->sum('ingresos'),
+        'total_costo' => $filas->sum('costo'),
+        'total_ganancia' => $filas->sum('ganancia'),
+    ]);
+    }
+
     public function comprasPorProveedor(Request $request)
     {
         $query = Compra::join('proveedores', 'compras.proveedor_id', '=', 'proveedores.id')

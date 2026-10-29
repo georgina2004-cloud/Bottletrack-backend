@@ -75,6 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/reportes/ventas-por-vendedor', [ReportController::class, 'ventasPorVendedor']);
     Route::get('/reportes/compras-por-proveedor', [ReportController::class, 'comprasPorProveedor']);
     Route::get('/reportes/movimientos-inventario', [ReportController::class, 'movimientosInventario']);
+    Route::get('/reportes/ganancias', [ReportController::class, 'gananciasPorPeriodo']);
     Route::get('/ventas/{venta}/factura-pdf', [ReportController::class, 'facturaPdf']);
 
     Route::get('/backup/generar', [BackupController::class, 'generar']);
